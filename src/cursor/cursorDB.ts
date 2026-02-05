@@ -55,8 +55,8 @@ export class CursorDB {
           composers.push({
             composerId,
             conversationId: data.conversationId || composerId,
-            createdAt: data.createdAt || Date.now(),
-            updatedAt: data.updatedAt
+            createdAt: data.createdAt ? new Date(data.createdAt).getTime() : Date.now(),
+            updatedAt: data.updatedAt ? new Date(data.updatedAt).getTime() : undefined
           });
         } catch (parseError) {
           console.error(`[CursorDB] Failed to parse composer: ${key}`, parseError);
@@ -97,12 +97,13 @@ export class CursorDB {
           const data = JSON.parse(value);
           
           const bubbleId = key.split(':')[2];
+          
           bubbles.push({
             bubbleId,
             composerId,
             type: data.type === 1 ? 'user' : data.type === 2 ? 'assistant' : 'user',
             text: data.text || data.content || '',
-            createdAt: data.createdAt || Date.now()
+            createdAt: data.createdAt ? new Date(data.createdAt).getTime() : Date.now()
           });
         } catch (parseError) {
           console.error(`[CursorDB] Failed to parse bubble: ${key}`, parseError);
@@ -124,20 +125,37 @@ export class CursorDB {
       return null;
     }
 
-    composers.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    console.log(`[CursorDB] 검색 중: ${composers.length}개 composer의 모든 AI bubble 확인...`);
     
-    const latestComposer = composers[0];
-    const bubbles = await this.getBubblesForComposer(latestComposer.composerId);
+    const allAIBubbles: Bubble[] = [];
     
-    const aiBubbles = bubbles.filter(b => b.type === 'assistant');
+    for (const composer of composers) {
+      const bubbles = await this.getBubblesForComposer(composer.composerId);
+      const aiBubbles = bubbles.filter(b => b.type === 'assistant');
+      allAIBubbles.push(...aiBubbles);
+    }
     
-    if (aiBubbles.length === 0) {
+    console.log(`[CursorDB] 전체 AI bubble 발견: ${allAIBubbles.length}개`);
+    
+    if (allAIBubbles.length === 0) {
       return null;
     }
 
-    aiBubbles.sort((a, b) => b.createdAt - a.createdAt);
+    allAIBubbles.sort((a, b) => b.createdAt - a.createdAt);
     
-    return aiBubbles[0];
+    console.log(`[CursorDB] 🔍 최신 AI bubble Top 5:`);
+    for (let i = 0; i < Math.min(5, allAIBubbles.length); i++) {
+      const bubble = allAIBubbles[i];
+      const timestamp = new Date(bubble.createdAt).toISOString();
+      const preview = bubble.text.substring(0, 50).replace(/\n/g, ' ');
+      console.log(`  ${i + 1}. ${bubble.bubbleId.substring(0, 8)}... - ${timestamp} - "${preview}..."`);
+    }
+    
+    const latestAIBubble = allAIBubbles[0];
+    console.log(`[CursorDB] ✅ 최신 bubble 반환: ${latestAIBubble.bubbleId}`);
+    console.log(`[CursorDB] ✅ Composer: ${latestAIBubble.composerId.substring(0, 8)}...`);
+    
+    return latestAIBubble;
   }
 
   close(): void {

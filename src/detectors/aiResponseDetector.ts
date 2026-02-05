@@ -85,32 +85,65 @@ export class AIResponseDetector {
     this.isProcessing = true;
 
     try {
-      await this.cursorDB.initialize();
-      
-      const latestAIBubble = await this.cursorDB.getLatestAIBubble();
-
-      if (!latestAIBubble) {
-        console.log('[AIResponseDetector] No AI bubbles found');
-        this.isProcessing = false;
-        return;
-      }
-
-      if (this.lastProcessedBubbleId === latestAIBubble.bubbleId) {
-        console.log('[AIResponseDetector] No new AI responses');
-        this.isProcessing = false;
-        return;
-      }
-
-      console.log(`[AIResponseDetector] ✅ New AI response detected: ${latestAIBubble.bubbleId}`);
-      await this.processAIBubble(latestAIBubble);
-      
-      this.lastProcessedBubbleId = latestAIBubble.bubbleId;
-
+      await this.checkForNewResponsesWithRetry();
     } catch (error) {
       console.error('[AIResponseDetector] Error checking for new responses:', error);
     } finally {
       this.cursorDB.close();
       this.isProcessing = false;
+    }
+  }
+
+  private async checkForNewResponsesWithRetry(maxRetries: number = 3): Promise<void> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.cursorDB.initialize();
+        
+        const latestAIBubble = await this.cursorDB.getLatestAIBubble();
+
+        if (!latestAIBubble) {
+          console.log('[AIResponseDetector] No AI bubbles found');
+          return;
+        }
+
+        console.log(`[AIResponseDetector] 🔍 Comparison:`);
+        console.log(`  - Latest bubble:    ${latestAIBubble.bubbleId.substring(0, 16)}...`);
+        console.log(`  - Last processed:   ${this.lastProcessedBubbleId ? this.lastProcessedBubbleId.substring(0, 16) + '...' : 'null'}`);
+        console.log(`  - Are same: ${this.lastProcessedBubbleId === latestAIBubble.bubbleId}`);
+
+        if (this.lastProcessedBubbleId === latestAIBubble.bubbleId) {
+          console.log('[AIResponseDetector] No new AI responses (already processed)');
+          return;
+        }
+
+        console.log(`[AIResponseDetector] ✅ New AI response detected: ${latestAIBubble.bubbleId}`);
+        await this.processAIBubble(latestAIBubble);
+        
+        this.lastProcessedBubbleId = latestAIBubble.bubbleId;
+        return;
+
+      } catch (error) {
+        lastError = error as Error;
+        
+        if (error instanceof Error && error.message.includes('malformed')) {
+          console.log(`[AIResponseDetector] DB malformed (attempt ${attempt}/${maxRetries}), retrying in ${attempt * 200}ms...`);
+          
+          this.cursorDB.close();
+          
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 200));
+            continue;
+          }
+        }
+        
+        throw error;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
     }
   }
 
