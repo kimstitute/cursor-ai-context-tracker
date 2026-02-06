@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { CursorDB } from './cursor/cursorDB';
 import { AIContextHoverProvider } from './providers/hoverProvider';
 import { AIResponseDetector } from './detectors/aiResponseDetector';
+import { FileChangeTracker } from './core/fileChangeTracker';
 
 let aiResponseDetector: AIResponseDetector | null = null;
+let fileChangeTracker: FileChangeTracker | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('[AI Context Tracker] Phase 1 MVP - Activating extension...');
@@ -20,8 +22,13 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(hoverDisposable);
     console.log('[Phase 1] ✅ Hover Provider registered');
 
-    console.log('[Phase 1] Step 2: Starting AI Response Detector...');
-    aiResponseDetector = new AIResponseDetector(cursorDB);
+    console.log('[Phase 1] Step 2: Starting File Change Tracker...');
+    fileChangeTracker = new FileChangeTracker();
+    fileChangeTracker.start();
+    console.log('[Phase 1] ✅ File Change Tracker started');
+
+    console.log('[Phase 1] Step 3: Starting AI Response Detector...');
+    aiResponseDetector = new AIResponseDetector(cursorDB, fileChangeTracker);
     aiResponseDetector.startPolling();
     console.log('[Phase 1] ✅ AI Response Detector started (5s polling)');
 
@@ -66,8 +73,9 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('[Phase 1] ========================================');
     console.log('[Phase 1] AI Context Tracker 활성화 완료');
     console.log('[Phase 1] - Hover Provider: 활성');
+    console.log('[Phase 1] - File Change Tracker: 활성 (30s 메모리)');
     console.log('[Phase 1] - AI Response Detector: 활성 (5s 간격)');
-    console.log('[Phase 1] - File Watcher: 활성 (500ms debounce)');
+    console.log('[Phase 1] - DB File Watcher: 활성 (500ms debounce)');
     console.log('[Phase 1] ========================================');
 
   } catch (error) {
@@ -83,5 +91,10 @@ export function deactivate() {
   if (aiResponseDetector) {
     aiResponseDetector.stopPolling();
     aiResponseDetector = null;
+  }
+
+  if (fileChangeTracker) {
+    fileChangeTracker.stop();
+    fileChangeTracker = null;
   }
 }

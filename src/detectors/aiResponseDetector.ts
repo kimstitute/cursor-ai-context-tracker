@@ -2,17 +2,20 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { CursorDB } from '../cursor/cursorDB';
 import { Bubble } from '../cursor/types';
+import { FileChangeTracker } from '../core/fileChangeTracker';
 
 export class AIResponseDetector {
   private cursorDB: CursorDB;
+  private fileChangeTracker: FileChangeTracker;
   private pollingInterval: NodeJS.Timeout | null = null;
   private fileWatcher: vscode.FileSystemWatcher | null = null;
   private isProcessing: boolean = false;
   private lastProcessedBubbleId: string | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
 
-  constructor(cursorDB: CursorDB) {
+  constructor(cursorDB: CursorDB, fileChangeTracker: FileChangeTracker) {
     this.cursorDB = cursorDB;
+    this.fileChangeTracker = fileChangeTracker;
   }
 
   public startPolling(): void {
@@ -160,8 +163,30 @@ export class AIResponseDetector {
       console.log(`  - User prompt (first 100 chars): ${latestUserBubble.text.substring(0, 100)}...`);
     }
 
+    const responseTime = bubble.createdAt;
+    this.fileChangeTracker.setAIActiveWindow(responseTime);
+
+    const changedFiles = this.fileChangeTracker.getChangedFiles(responseTime, 5000);
+    
+    console.log(`[AIResponseDetector] 📁 Changed files during AI response:`);
+    if (changedFiles.length > 0) {
+      changedFiles.forEach((file, index) => {
+        const fileName = file.split(/[\\/]/).pop() || file;
+        console.log(`  ${index + 1}. ${fileName}`);
+        console.log(`     Full path: ${file}`);
+      });
+    } else {
+      console.log(`  (No files changed in ±5s window)`);
+    }
+
+    const stats = this.fileChangeTracker.getStats();
+    console.log(`[AIResponseDetector] 📊 Tracker stats:`);
+    console.log(`  - Total tracked files: ${stats.totalFiles}`);
+    console.log(`  - Total changes: ${stats.totalChanges}`);
+    console.log(`  - Oldest change: ${stats.oldestChange ? new Date(stats.oldestChange).toISOString() : 'N/A'}`);
+
     vscode.window.showInformationMessage(
-      `✅ New AI response detected! Bubble ID: ${bubble.bubbleId.substring(0, 8)}...`
+      `✅ AI response detected! ${changedFiles.length} file(s) changed`
     );
   }
 

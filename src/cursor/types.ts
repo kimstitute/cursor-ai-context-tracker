@@ -27,3 +27,14 @@ export interface AICodeMetadata {
   modelType?: string;
   userSelections?: { text: string; file?: string }[];
 }
+
+export interface FileChange {
+  path: string;
+  timestamp: number;
+  type: 'create' | 'change' | 'delete';
+}
+
+export interface TimeWindow {
+  start: number;
+  end: number;
+}
