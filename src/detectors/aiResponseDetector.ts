@@ -111,15 +111,13 @@ export class AIResponseDetector {
           return;
         }
 
-        console.log(`[AIResponseDetector] 🔍 Comparison:`);
-        console.log(`  - Latest bubble:    ${latestAIBubble.bubbleId.substring(0, 16)}...`);
-        console.log(`  - Last processed:   ${this.lastProcessedBubbleId ? this.lastProcessedBubbleId.substring(0, 16) + '...' : 'null'}`);
-        console.log(`  - Are same: ${this.lastProcessedBubbleId === latestAIBubble.bubbleId}`);
-
         if (this.lastProcessedBubbleId === latestAIBubble.bubbleId) {
-          console.log('[AIResponseDetector] No new AI responses (already processed)');
           return;
         }
+        
+        console.log(`[AIResponseDetector] 🔍 New bubble detected!`);
+        console.log(`  - Latest: ${latestAIBubble.bubbleId.substring(0, 16)}...`);
+        console.log(`  - Previous: ${this.lastProcessedBubbleId ? this.lastProcessedBubbleId.substring(0, 16) + '...' : 'none'}`);
 
         console.log(`[AIResponseDetector] ✅ New AI response detected: ${latestAIBubble.bubbleId}`);
         await this.processAIBubble(latestAIBubble);
@@ -151,42 +149,39 @@ export class AIResponseDetector {
   }
 
   private async processAIBubble(bubble: Bubble): Promise<void> {
-    console.log('[AIResponseDetector] Processing AI bubble...');
-    console.log(`  - Bubble ID: ${bubble.bubbleId}`);
-    console.log(`  - Composer ID: ${bubble.composerId}`);
-    console.log(`  - Created: ${new Date(bubble.createdAt).toISOString()}`);
-    console.log(`  - Text (first 100 chars): ${bubble.text.substring(0, 100)}...`);
+    const timestamp = new Date(bubble.createdAt).toISOString();
+    const preview = bubble.text.substring(0, 60).replace(/\n/g, ' ');
+    
+    console.log(`[AIResponseDetector] 📨 Processing bubble: ${bubble.bubbleId.substring(0, 8)}... at ${timestamp}`);
+    console.log(`[AIResponseDetector]    Preview: "${preview}..."`);
 
     const userBubbles = await this.getUserBubblesForComposer(bubble.composerId);
     if (userBubbles.length > 0) {
       const latestUserBubble = userBubbles[userBubbles.length - 1];
-      console.log(`  - User prompt (first 100 chars): ${latestUserBubble.text.substring(0, 100)}...`);
+      const userPrompt = latestUserBubble.text.substring(0, 60).replace(/\n/g, ' ');
+      console.log(`[AIResponseDetector]    User prompt: "${userPrompt}..."`);
     }
 
     const responseTime = bubble.createdAt;
-    this.fileChangeTracker.setAIActiveWindow(responseTime);
+    this.fileChangeTracker.setAIActiveWindow(responseTime, 10000);
 
-    const changedFiles = this.fileChangeTracker.getChangedFiles(responseTime, 5000);
+    const changedFiles = this.fileChangeTracker.getChangedFiles(responseTime, 10000);
     
-    console.log(`[AIResponseDetector] 📁 Changed files during AI response:`);
     if (changedFiles.length > 0) {
+      console.log(`[AIResponseDetector] 📁 Changed files (${changedFiles.length}):`);
       changedFiles.forEach((file, index) => {
         const fileName = file.split(/[\\/]/).pop() || file;
         console.log(`  ${index + 1}. ${fileName}`);
-        console.log(`     Full path: ${file}`);
       });
     } else {
-      console.log(`  (No files changed in ±5s window)`);
+      console.log(`[AIResponseDetector] 📁 No files changed in ±10s window`);
     }
 
     const stats = this.fileChangeTracker.getStats();
-    console.log(`[AIResponseDetector] 📊 Tracker stats:`);
-    console.log(`  - Total tracked files: ${stats.totalFiles}`);
-    console.log(`  - Total changes: ${stats.totalChanges}`);
-    console.log(`  - Oldest change: ${stats.oldestChange ? new Date(stats.oldestChange).toISOString() : 'N/A'}`);
+    console.log(`[AIResponseDetector] 📊 Stats: ${stats.totalFiles} files tracked, ${stats.totalChanges} changes total`);
 
     vscode.window.showInformationMessage(
-      `✅ AI response detected! ${changedFiles.length} file(s) changed`
+      `✅ AI response: ${changedFiles.length} file(s) changed`
     );
   }
 

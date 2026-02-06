@@ -102,7 +102,9 @@ export class FileChangeTracker {
     const changes = this.recentChanges.get(normalizedPath)!;
     changes.push(change);
 
-    console.log(`[FileChangeTracker] Recorded ${change.type}: ${path.basename(normalizedPath)} at ${new Date(change.timestamp).toISOString()}`);
+    const fileName = path.basename(normalizedPath);
+    const time = new Date(change.timestamp).toISOString().substring(11, 19);
+    console.log(`[FileChangeTracker] ${change.type}: ${fileName} at ${time}`);
   }
 
   public setAIActiveWindow(responseTime: number, windowMs: number = 5000): void {
@@ -111,11 +113,8 @@ export class FileChangeTracker {
       end: responseTime + windowMs
     };
 
-    console.log(`[FileChangeTracker] AI active window set: ${new Date(this.aiActiveWindow.start).toISOString()} ~ ${new Date(this.aiActiveWindow.end).toISOString()}`);
-
     setTimeout(() => {
       this.aiActiveWindow = null;
-      console.log('[FileChangeTracker] AI active window cleared');
     }, windowMs * 2);
   }
 
@@ -123,23 +122,31 @@ export class FileChangeTracker {
     const windowStart = responseTime - windowMs;
     const windowEnd = responseTime + windowMs;
 
-    console.log(`[FileChangeTracker] 🔍 Searching for changes in window:`);
-    console.log(`  - Response time: ${new Date(responseTime).toISOString()}`);
-    console.log(`  - Window: ${new Date(windowStart).toISOString()} ~ ${new Date(windowEnd).toISOString()}`);
-
     const changedFiles: Set<string> = new Set();
+    const matches: { file: string; time: number; type: string }[] = [];
 
     for (const [filePath, changes] of this.recentChanges.entries()) {
       for (const change of changes) {
         if (change.timestamp >= windowStart && change.timestamp <= windowEnd) {
           changedFiles.add(filePath);
-          console.log(`  ✅ Match: ${path.basename(filePath)} at ${new Date(change.timestamp).toISOString()} (${change.type})`);
+          matches.push({
+            file: path.basename(filePath),
+            time: change.timestamp,
+            type: change.type
+          });
           break;
         }
       }
     }
 
-    console.log(`[FileChangeTracker] Found ${changedFiles.size} changed files in window`);
+    if (matches.length > 0) {
+      console.log(`[FileChangeTracker] 🔍 Found ${matches.length} files in ±${windowMs/1000}s window:`);
+      matches.forEach(m => {
+        const timeDiff = ((m.time - responseTime) / 1000).toFixed(1);
+        console.log(`  ✅ ${m.file} (${timeDiff}s, ${m.type})`);
+      });
+    }
+
     return Array.from(changedFiles);
   }
 
@@ -161,10 +168,6 @@ export class FileChangeTracker {
       } else if (filteredChanges.length !== changes.length) {
         this.recentChanges.set(filePath, filteredChanges);
       }
-    }
-
-    if (totalRemoved > 0) {
-      console.log(`[FileChangeTracker] Cleaned up ${totalRemoved} old file entries`);
     }
   }
 

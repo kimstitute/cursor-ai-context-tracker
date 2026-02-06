@@ -71,7 +71,7 @@ export class CursorDB {
     }
   }
 
-  async getBubblesForComposer(composerId: string): Promise<Bubble[]> {
+  async getBubblesForComposer(composerId: string, silent: boolean = false): Promise<Bubble[]> {
     if (!this.db) {
       throw new Error('Database not initialized');
     }
@@ -83,7 +83,6 @@ export class CursorDB {
       const result = this.db.exec(query);
       
       if (result.length === 0) {
-        console.log(`[CursorDB] No bubbles found for composer: ${composerId}`);
         return bubbles;
       }
 
@@ -106,11 +105,15 @@ export class CursorDB {
             createdAt: data.createdAt ? new Date(data.createdAt).getTime() : Date.now()
           });
         } catch (parseError) {
-          console.error(`[CursorDB] Failed to parse bubble: ${key}`, parseError);
+          if (!silent) {
+            console.error(`[CursorDB] Failed to parse bubble: ${key}`, parseError);
+          }
         }
       }
 
-      console.log(`[CursorDB] Found ${bubbles.length} bubbles for composer: ${composerId}`);
+      if (!silent && bubbles.length > 0) {
+        console.log(`[CursorDB] Found ${bubbles.length} bubbles for composer: ${composerId.substring(0, 8)}...`);
+      }
       return bubbles;
     } catch (error) {
       console.error(`[CursorDB] Failed to get bubbles for composer ${composerId}:`, error);
@@ -125,17 +128,19 @@ export class CursorDB {
       return null;
     }
 
-    console.log(`[CursorDB] 검색 중: ${composers.length}개 composer의 모든 AI bubble 확인...`);
-    
     const allAIBubbles: Bubble[] = [];
+    let composersWithBubbles = 0;
     
     for (const composer of composers) {
-      const bubbles = await this.getBubblesForComposer(composer.composerId);
+      const bubbles = await this.getBubblesForComposer(composer.composerId, true);
       const aiBubbles = bubbles.filter(b => b.type === 'assistant');
-      allAIBubbles.push(...aiBubbles);
+      if (aiBubbles.length > 0) {
+        allAIBubbles.push(...aiBubbles);
+        composersWithBubbles++;
+      }
     }
     
-    console.log(`[CursorDB] 전체 AI bubble 발견: ${allAIBubbles.length}개`);
+    console.log(`[CursorDB] ✅ Scanned ${composers.length} composers (${composersWithBubbles} with bubbles), found ${allAIBubbles.length} AI bubbles`);
     
     if (allAIBubbles.length === 0) {
       return null;
@@ -143,17 +148,12 @@ export class CursorDB {
 
     allAIBubbles.sort((a, b) => b.createdAt - a.createdAt);
     
-    console.log(`[CursorDB] 🔍 최신 AI bubble Top 5:`);
-    for (let i = 0; i < Math.min(5, allAIBubbles.length); i++) {
-      const bubble = allAIBubbles[i];
-      const timestamp = new Date(bubble.createdAt).toISOString();
-      const preview = bubble.text.substring(0, 50).replace(/\n/g, ' ');
-      console.log(`  ${i + 1}. ${bubble.bubbleId.substring(0, 8)}... - ${timestamp} - "${preview}..."`);
-    }
-    
     const latestAIBubble = allAIBubbles[0];
-    console.log(`[CursorDB] ✅ 최신 bubble 반환: ${latestAIBubble.bubbleId}`);
-    console.log(`[CursorDB] ✅ Composer: ${latestAIBubble.composerId.substring(0, 8)}...`);
+    const timestamp = new Date(latestAIBubble.createdAt).toISOString();
+    const preview = latestAIBubble.text.substring(0, 80).replace(/\n/g, ' ');
+    
+    console.log(`[CursorDB] ✅ Latest bubble: ${latestAIBubble.bubbleId.substring(0, 8)}... at ${timestamp}`);
+    console.log(`[CursorDB]    Preview: "${preview}..."`);
     
     return latestAIBubble;
   }
